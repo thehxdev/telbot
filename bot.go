@@ -46,7 +46,7 @@ type Bot struct {
 	sdChan chan struct{}
 }
 
-type UpdateHandlerFunc func(bot *Bot, update *Update)
+type UpdateHandlerFunc func(bot *Bot, update *Update) error
 
 type StringMap map[string]string
 
