@@ -16,14 +16,14 @@ func main() {
 	}
 
 	conv, err := telbot.NewConversation(telbot.ConversationConfig{
-		Bot: bot,
+		Bot:    bot,
 		Stages: []telbot.UpdateHandlerFunc{startHandler, nameHandler},
 	})
 
 	updatesChan, err := bot.StartPolling(telbot.UpdateParams{
-		Offset:  0,
-		Limit:   100,
-		Timeout: 30,
+		Offset:         0,
+		Limit:          100,
+		Timeout:        30,
 		AllowedUpdates: []string{"message"},
 	})
 
@@ -38,7 +38,7 @@ func main() {
 func startHandler(bot *telbot.Bot, update telbot.Update) error {
 	_, err := bot.SendMessage(telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
-		Text: "Hey! This is a question bot. What is your name?",
+		Text:   "Hey! This is a question bot. What is your name?",
 	})
 	if err != nil {
 		return err
@@ -49,7 +49,7 @@ func startHandler(bot *telbot.Bot, update telbot.Update) error {
 func nameHandler(bot *telbot.Bot, update telbot.Update) error {
 	_, err := bot.SendMessage(telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
-		Text: fmt.Sprintf("Nice to meet you %s!", update.Message.Text),
+		Text:   fmt.Sprintf("Nice to meet you %s!", update.Message.Text),
 	})
 	if err != nil {
 		return err

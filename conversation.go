@@ -6,11 +6,13 @@ import (
 )
 
 type ErrConversationRepeat struct{}
+
 func (e *ErrConversationRepeat) Error() string {
 	return "repeat same stage"
 }
 
 type ErrConversationEnd struct{}
+
 func (e *ErrConversationEnd) Error() string {
 	return "end conversation"
 }
@@ -25,7 +27,7 @@ type Conversation struct {
 }
 
 type ConversationConfig struct {
-	Bot *Bot
+	Bot    *Bot
 	Stages []UpdateHandlerFunc
 }
 
@@ -79,9 +81,9 @@ func NewConversation(conf ConversationConfig) (Conversation, error) {
 	}
 
 	conv := Conversation{
-		bot: conf.Bot,
-		stages: []UpdateHandlerFunc{},
-		count: stagesLen,
+		bot:     conf.Bot,
+		stages:  []UpdateHandlerFunc{},
+		count:   stagesLen,
 		current: 0,
 	}
 	conv.stages = append(conv.stages, conf.Stages...)
