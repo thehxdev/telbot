@@ -35,9 +35,9 @@ func main() {
 			var err error
 			switch update.Message.Text {
 			case "/start":
-				err = StartHandler(bot, &update)
+				err = StartHandler(bot, update)
 			default:
-				err = EchoHandler(bot, &update)
+				err = EchoHandler(bot, update)
 			}
 			if err != nil {
 				log.Println(err)
@@ -46,7 +46,7 @@ func main() {
 	}
 }
 
-func StartHandler(bot *telbot.Bot, update *telbot.Update) error {
+func StartHandler(bot *telbot.Bot, update telbot.Update) error {
 	_, err := bot.SendMessage(telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
 		Text:   "Hello World!",
@@ -54,7 +54,7 @@ func StartHandler(bot *telbot.Bot, update *telbot.Update) error {
 	return err
 }
 
-func EchoHandler(bot *telbot.Bot, update *telbot.Update) error {
+func EchoHandler(bot *telbot.Bot, update telbot.Update) error {
 	_, err := bot.SendMessage(telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
 		Text:   update.Message.Text,
