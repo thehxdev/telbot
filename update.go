@@ -12,10 +12,10 @@ type Update struct {
 }
 
 type UpdateParams struct {
-	Offset         int
-	Limit          int
-	Timeout        int
-	AllowedUpdates []string
+	Offset         int      `json:"offset"`
+	Limit          int      `json:"limit"`
+	Timeout        int      `json:"timeout"`
+	AllowedUpdates []string `json:"allowed_updates"`
 }
 
 func (up *UpdateParams) ToReader() (io.Reader, error) {
