@@ -318,7 +318,7 @@ func (b *Bot) StartPolling(params UpdateParams) (<-chan Update, error) {
 					params.Offset = update.Id + 1
 					if update.Message != nil {
 						if hasConversation(update) {
-							handleConversationUpdate(update)
+							go handleConversationUpdate(update)
 							continue
 						}
 						b.UpdatesChan <- update
