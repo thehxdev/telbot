@@ -46,7 +46,7 @@ type Bot struct {
 	sdChan chan struct{}
 }
 
-type UpdateHandlerFunc func(bot *Bot, update *Update) error
+type UpdateHandlerFunc func(bot *Bot, update Update) error
 
 type StringMap map[string]string
 
@@ -316,7 +316,13 @@ func (b *Bot) StartPolling(params UpdateParams) (<-chan Update, error) {
 			for _, update := range updates {
 				if update.Id >= params.Offset {
 					params.Offset = update.Id + 1
-					b.UpdatesChan <- update
+					if update.Message != nil {
+						if hasConversation(update) {
+							handleConversationUpdate(update)
+							continue
+						}
+						b.UpdatesChan <- update
+					}
 				}
 			}
 			time.Sleep(GetUpdatesSleepTime)
