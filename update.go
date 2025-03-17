@@ -8,7 +8,7 @@ import (
 
 type Update struct {
 	Id      int      `json:"update_id"`
-	Message *Message `json:"message"`
+	Message *Message `json:"message,omitempty"`
 }
 
 type UpdateParams struct {
