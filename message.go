@@ -60,6 +60,9 @@ type TextMessageParams struct {
 	ChatId      int              `json:"chat_id"`
 	Text        string           `json:"text"`
 	ReplyParams *ReplyParameters `json:"reply_parameters,omitempty"`
+
+	// This field is not used anymore (I assume it's legacy. Use ReplyParams instead)
+	ReplyToMsgId int `json:"reply_to_message_id,omitempty"`
 }
 
 func (e *MessageEntity) IsCommand() bool {
