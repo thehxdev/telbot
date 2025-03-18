@@ -118,7 +118,7 @@ func (conv *Conversation) callStage(update Update) error {
 	if err != nil {
 		return err
 	}
-	return fn(conv.bot, update)
+	return fn(update)
 }
 
 func endConversation(userId int) {
