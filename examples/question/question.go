@@ -35,8 +35,8 @@ func main() {
 	}
 }
 
-func startHandler(bot *telbot.Bot, update telbot.Update) error {
-	_, err := bot.SendMessage(telbot.TextMessageParams{
+func startHandler(update telbot.Update) error {
+	_, err := update.SendMessage(telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
 		Text:   "Hey! This is a question bot. What is your name?",
 	})
@@ -46,8 +46,8 @@ func startHandler(bot *telbot.Bot, update telbot.Update) error {
 	return nil
 }
 
-func nameHandler(bot *telbot.Bot, update telbot.Update) error {
-	_, err := bot.SendMessage(telbot.TextMessageParams{
+func nameHandler(update telbot.Update) error {
+	_, err := update.SendMessage(telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
 		Text:   fmt.Sprintf("Nice to meet you %s!", update.Message.Text),
 	})
