@@ -46,7 +46,7 @@ type Bot struct {
 	sdChan chan struct{}
 }
 
-type UpdateHandlerFunc func(bot *Bot, update Update) error
+type UpdateHandlerFunc func(update Update) error
 
 type StringMap map[string]string
 
@@ -300,6 +300,20 @@ func (b *Bot) SendMessage(params TextMessageParams) (*Message, error) {
 func (b *Bot) StartPolling(params UpdateParams) (<-chan Update, error) {
 	b.UpdatesChan = make(chan Update, params.Limit)
 
+	// down there the code is nested enough.
+	// just for cleanup purposes.
+	updateHandler := func(update Update) {
+		if update.Message == nil {
+			return
+		}
+		update.bot = b
+		if hasConversation(update) {
+			go handleConversationUpdate(update)
+			return
+		}
+		b.UpdatesChan <- update
+	}
+
 	go func() {
 		for {
 			select {
@@ -316,13 +330,7 @@ func (b *Bot) StartPolling(params UpdateParams) (<-chan Update, error) {
 			for _, update := range updates {
 				if update.Id >= params.Offset {
 					params.Offset = update.Id + 1
-					if update.Message != nil {
-						if hasConversation(update) {
-							go handleConversationUpdate(update)
-							continue
-						}
-						b.UpdatesChan <- update
-					}
+					go updateHandler(update)
 				}
 			}
 			time.Sleep(GetUpdatesSleepTime)
