@@ -1,6 +1,7 @@
 package telbot
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"io"
@@ -9,6 +10,8 @@ import (
 type Update struct {
 	Id      int      `json:"update_id"`
 	Message *Message `json:"message,omitempty"`
+
+	bot     *Bot     `json:"-"`
 }
 
 type UpdateParams struct {
@@ -28,4 +31,16 @@ func (up *UpdateParams) ToReader() (io.Reader, error) {
 
 func (up *UpdateParams) ContentType() string {
 	return ContentTypeApplicationJson
+}
+
+func (u *Update) GetBot() *Bot {
+	return u.bot
+}
+
+func (u *Update) SendMessage(params TextMessageParams) (*Message, error) {
+	return u.bot.SendMessage(params)
+}
+
+func (u *Update) UploadFile(ctx context.Context, params UploadParams, file FileInfo) (*Message, error) {
+	return u.bot.UploadFile(ctx, params, file)
 }
