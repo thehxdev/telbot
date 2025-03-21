@@ -1,10 +1,6 @@
-// A simple telegram bot api library that supports a little subset of official telegram api
-// for building small and simple bots.
-// Inspired by `https://github.com/go-telegram-bot-api/telegram-bot-api`
-
-// FIXME: Don't use context.Background() for every request
-
 package telbot
+
+// TODO: find a better way to use context package with this library.
 
 import (
 	"bytes"
@@ -17,44 +13,34 @@ import (
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	"github.com/thehxdev/telbot/types"
 )
 
 const GetUpdatesSleepTime = time.Second * 1
-
-const (
-	ContentTypeFormUrlEncoded    = "application/x-www-form-urlencoded"
-	ContentTypeMultipartFormData = "multipart/form-data"
-	ContentTypeApplicationJson   = "application/json"
-)
-
-const (
-	MethodGetMe       = "getMe"
-	MethodGetUpdates  = "getUpdates"
-	MethodSendMessage = "sendMessage"
-	MethodGetFile     = "getFile"
-)
 
 type Bot struct {
 	Token       string
 	BaseUrl     string
 	BaseFileUrl string
-	Self        *User
-	UpdatesChan chan Update
+	Self        *types.User
 	Client      *http.Client
 
 	// Shutdown signal channel
-	sdChan chan struct{}
+	sdChan      chan struct{}
+	updatesChan chan Update
 }
 
 type UpdateHandlerFunc func(update Update) error
 
-type StringMap map[string]string
+// type StringMap map[string]string
 
 type RequestBody interface {
 	ToReader() (io.Reader, error)
 	ContentType() string
 }
 
+// This type wraps an `io.Reader` and implements `RequestBody` interface for it.
 type WrappedReader struct {
 	io.Reader
 	// Content Type
@@ -71,7 +57,6 @@ func (wr *WrappedReader) ContentType() string {
 
 type RequestInfo struct {
 	Method      string
-	BaseUrl     string
 	HasBody     bool
 	Body        RequestBody
 	ContentType string
@@ -84,7 +69,7 @@ type APIResponse struct {
 	Description string          `json:"description,omitempty"`
 }
 
-// Create a new instance of Bot
+// Create a new Bot
 func New(token string, host ...string) (*Bot, error) {
 	h := "api.telegram.org"
 	if len(host) > 0 {
@@ -110,14 +95,14 @@ func New(token string, host ...string) (*Bot, error) {
 
 func (b *Bot) Shutdown() {
 	close(b.sdChan)
-	close(b.UpdatesChan)
+	close(b.updatesChan)
 }
 
 func CreateMethodUrl(baseUrl string, method string) string {
 	return fmt.Sprintf("%s/%s", baseUrl, method)
 }
 
-func (b *Bot) SendRequest(ctx context.Context, info RequestInfo) (*APIResponse, error) {
+func (b *Bot) SendRequest(ctx context.Context, baseUrl string, info RequestInfo) (*APIResponse, error) {
 	var err error
 	var reqBody io.Reader = nil
 	if info.HasBody {
@@ -127,13 +112,13 @@ func (b *Bot) SendRequest(ctx context.Context, info RequestInfo) (*APIResponse, 
 		}
 	}
 
-	reqUrl := CreateMethodUrl(info.BaseUrl, info.Method)
+	reqUrl := CreateMethodUrl(baseUrl, info.Method)
 	req, err := http.NewRequestWithContext(ctx, "POST", reqUrl, reqBody)
 	if err != nil {
 		return nil, err
 	}
 	if info.ContentType != "" {
-		req.Header.Add("Content-Type", info.ContentType)
+		req.Header.Set("Content-Type", info.ContentType)
 	}
 
 	resp, err := b.Client.Do(req)
@@ -154,11 +139,12 @@ func (b *Bot) SendRequest(ctx context.Context, info RequestInfo) (*APIResponse, 
 	return apiResp, nil
 }
 
-func (b *Bot) GetMe() (*User, error) {
-	u := &User{}
-	apiResp, err := b.SendRequest(context.Background(), RequestInfo{
+func (b *Bot) GetMe() (*types.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      MethodGetMe,
-		BaseUrl:     b.BaseUrl,
 		HasBody:     false,
 		Body:        nil,
 		ContentType: "",
@@ -171,15 +157,19 @@ func (b *Bot) GetMe() (*User, error) {
 		return nil, errors.New(apiResp.Description)
 	}
 
+	u := &types.User{}
 	err = json.Unmarshal(apiResp.Result, u)
 	return u, err
 }
 
 func (b *Bot) GetUpdates(params UpdateParams) ([]Update, error) {
 	updates := []Update{}
-	apiResp, err := b.SendRequest(context.Background(), RequestInfo{
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(params.Timeout))
+	defer cancel()
+
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      MethodGetUpdates,
-		BaseUrl:     b.BaseUrl,
 		HasBody:     true,
 		Body:        &params,
 		ContentType: params.ContentType(),
@@ -195,7 +185,7 @@ func (b *Bot) GetUpdates(params UpdateParams) ([]Update, error) {
 	return updates, nil
 }
 
-func (b *Bot) UploadFile(ctx context.Context, params UploadParams, file FileInfo) (*Message, error) {
+func (b *Bot) UploadFile(ctx context.Context, params UploadParams, file FileInfo) (*types.Message, error) {
 	pipeReader, pipeWriter := io.Pipe()
 	multipartWriter := multipart.NewWriter(pipeWriter)
 
@@ -235,9 +225,8 @@ func (b *Bot) UploadFile(ctx context.Context, params UploadParams, file FileInfo
 		}
 	}()
 
-	apiResp, err := b.SendRequest(context.Background(), RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      "sendDocument",
-		BaseUrl:     b.BaseUrl,
 		HasBody:     true,
 		Body:        &WrappedReader{Reader: pipeReader},
 		ContentType: multipartWriter.FormDataContentType(),
@@ -246,7 +235,7 @@ func (b *Bot) UploadFile(ctx context.Context, params UploadParams, file FileInfo
 		return nil, err
 	}
 
-	msg := &Message{}
+	msg := &types.Message{}
 	if err := json.NewDecoder(bytes.NewReader(apiResp.Result)).Decode(msg); err != nil {
 		return nil, err
 	}
@@ -254,11 +243,17 @@ func (b *Bot) UploadFile(ctx context.Context, params UploadParams, file FileInfo
 	return msg, nil
 }
 
-func (b *Bot) GetFile(fileId string) (*File, error) {
-	jbytes, err := json.Marshal(StringMap{"file_id": fileId})
-	apiResp, err := b.SendRequest(context.Background(), RequestInfo{
+func (b *Bot) GetFile(fileId string) (*types.File, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	jbytes, err := json.Marshal(map[string]string{"file_id": fileId})
+	if err != nil {
+		return nil, err
+	}
+
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      MethodGetFile,
-		BaseUrl:     b.BaseUrl,
 		HasBody:     true,
 		Body:        &WrappedReader{Reader: bytes.NewReader(jbytes)},
 		ContentType: ContentTypeApplicationJson,
@@ -267,7 +262,7 @@ func (b *Bot) GetFile(fileId string) (*File, error) {
 		return nil, err
 	}
 
-	file := &File{}
+	file := &types.File{}
 	err = json.Unmarshal(apiResp.Result, file)
 	if err != nil {
 		return nil, err
@@ -276,10 +271,12 @@ func (b *Bot) GetFile(fileId string) (*File, error) {
 	return file, nil
 }
 
-func (b *Bot) SendMessage(params TextMessageParams) (*Message, error) {
-	apiResp, err := b.SendRequest(context.Background(), RequestInfo{
+func (b *Bot) SendMessage(params TextMessageParams) (*types.Message, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      MethodSendMessage,
-		BaseUrl:     b.BaseUrl,
 		HasBody:     true,
 		Body:        &params,
 		ContentType: params.ContentType(),
@@ -288,7 +285,7 @@ func (b *Bot) SendMessage(params TextMessageParams) (*Message, error) {
 		return nil, err
 	}
 
-	msg := &Message{}
+	msg := &types.Message{}
 	err = json.Unmarshal(apiResp.Result, msg)
 	if err != nil {
 		return nil, err
@@ -297,22 +294,49 @@ func (b *Bot) SendMessage(params TextMessageParams) (*Message, error) {
 	return msg, nil
 }
 
-func (b *Bot) StartPolling(params UpdateParams) (<-chan Update, error) {
-	b.UpdatesChan = make(chan Update, params.Limit)
+func (b *Bot) EditMessageText(params EditMessageTextParams) (*types.Message, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
 
-	// down there the code is nested enough.
-	// just for cleanup purposes.
-	updateHandler := func(update Update) {
-		if update.Message == nil {
-			return
-		}
-		update.bot = b
-		if hasConversation(update) {
-			go handleConversationUpdate(update)
-			return
-		}
-		b.UpdatesChan <- update
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
+		Method:      MethodEditMessageText,
+		HasBody:     true,
+		Body:        &params,
+		ContentType: params.ContentType(),
+	})
+	if err != nil {
+		return nil, err
 	}
+
+	msg := &types.Message{}
+	err = json.Unmarshal(apiResp.Result, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return msg, nil
+}
+
+func (b *Bot) DeleteMessage(chatId, messageId int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	jbytes, err := json.Marshal(map[string]int{"chat_id": chatId, "message_id": messageId})
+	if err != nil {
+		return err
+	}
+
+	_, err = b.SendRequest(ctx, b.BaseUrl, RequestInfo{
+		Method:      MethodDeleteMessage,
+		HasBody:     true,
+		Body:        &WrappedReader{Reader: bytes.NewReader(jbytes)},
+		ContentType: ContentTypeApplicationJson,
+	})
+	return err
+}
+
+func (b *Bot) StartPolling(params UpdateParams) (<-chan Update, error) {
+	b.updatesChan = make(chan Update, params.Limit)
 
 	go func() {
 		for {
@@ -330,12 +354,13 @@ func (b *Bot) StartPolling(params UpdateParams) (<-chan Update, error) {
 			for _, update := range updates {
 				if update.Id >= params.Offset {
 					params.Offset = update.Id + 1
-					go updateHandler(update)
+					update.bot = b
+					b.updatesChan <- update
 				}
 			}
 			time.Sleep(GetUpdatesSleepTime)
 		}
 	}()
 
-	return b.UpdatesChan, nil
+	return b.updatesChan, nil
 }
