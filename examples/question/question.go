@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/thehxdev/telbot"
+	conv "github.com/thehxdev/telbot/ext/conversation"
 )
 
 const BOT_TOKEN string = "your_awesome_bot_token"
@@ -15,10 +16,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	conv, err := telbot.NewConversation(telbot.ConversationConfig{
-		Bot:    bot,
-		Stages: []telbot.UpdateHandlerFunc{startHandler, nameHandler},
-	})
+	startConv, _ := conv.New([]telbot.UpdateHandlerFunc{startHandler, nameHandler})
 
 	updatesChan, err := bot.StartPolling(telbot.UpdateParams{
 		Offset:         0,
@@ -29,9 +27,28 @@ func main() {
 
 	log.Println("started polling updates...")
 	for update := range updatesChan {
-		if update.Message.Text == "/start" {
-			conv.Start(update)
+		if update.Message == nil {
+			continue
 		}
+		go func() {
+			var err error
+			switch update.Message.Text {
+			case "/start":
+				// If a message with text `/start` comes, start a conversation.
+				startConv.Start(update)
+			default:
+				// Otherwise, there is no more routes. So check all other updates for conversation.
+				// If they belong to a conversation, handle that.
+				// 
+				// NOTE: Ordering of the handlers matter! `telbot` is a low-level library that
+				// does not provide any routing. So the user must handle routing of the updates
+				// and conversations.
+				if conv.HasConversation(update.ChatId(), update.UserId()) {
+					err = conv.HandleUpdate(update)
+				}
+			}
+			log.Println(err)
+		}()
 	}
 }
 
@@ -40,10 +57,7 @@ func startHandler(update telbot.Update) error {
 		ChatId: update.Message.Chat.Id,
 		Text:   "Hey! This is a question bot. What is your name?",
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func nameHandler(update telbot.Update) error {
@@ -54,5 +68,5 @@ func nameHandler(update telbot.Update) error {
 	if err != nil {
 		return err
 	}
-	return &telbot.ErrConversationEnd{}
+	return conv.EndConversation
 }

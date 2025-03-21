@@ -27,6 +27,9 @@ func main() {
 
 	log.Println("started polling updates")
 	for update := range updatesChan {
+		if update.Message == nil {
+			continue
+		}
 		// Only handle private chats
 		if update.Message.Chat.Type != telbot.ChatTypePrivate {
 			continue
