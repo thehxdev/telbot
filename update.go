@@ -34,6 +34,10 @@ func (u *Update) DeleteMessage(chatId, messageId int) error {
 	return u.bot.DeleteMessage(chatId, messageId)
 }
 
+func (u *Update) GetFile(fileId string) (*types.File, error) {
+	return u.bot.GetFile(fileId)
+}
+
 func (u *Update) ChatId() int {
 	if u.Message.Chat != nil {
 		return u.Message.Chat.Id
