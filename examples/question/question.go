@@ -39,7 +39,7 @@ func main() {
 			default:
 				// Otherwise, there is no more routes. So check all other updates for conversation.
 				// If they belong to a conversation, handle that.
-				// 
+				//
 				// NOTE: Ordering of the handlers matter! `telbot` is a low-level library that
 				// does not provide any routing. So the user must handle routing of the updates
 				// and conversations.
