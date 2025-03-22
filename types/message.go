@@ -64,21 +64,34 @@ func (m *Message) Time() time.Time {
 }
 
 func (m *Message) IsCommand() bool {
-	if m.Entities == nil || len(m.Entities) == 0 {
-		return false
+	if m.Entities != nil && len(m.Entities) > 0 {
+		e := m.Entities[0]
+		return e.IsCommand()
 	}
-	e := m.Entities[0]
-	return e.IsCommand()
+	txt := m.Text
+	if idx := strings.IndexByte(txt, '/'); idx == 0 {
+		return (len(txt) > 1)
+	}
+	return false
 }
 
-func (m *Message) Command() string {
+func (m *Message) Command() (string, bool) {
 	if !m.IsCommand() {
-		return ""
+		return "", false
 	}
-	e := m.Entities[0]
-	command := m.Text[1:e.Length]
-	if i := strings.Index(command, "@"); i != 1 {
-		command = command[:i]
+	var command string
+	if m.Entities != nil && len(m.Entities) > 0 {
+		e := m.Entities[0]
+		command = m.Text[1:e.Length]
+		if idx := strings.IndexByte(command, '@'); idx != -1 {
+			command = command[:idx]
+		}
+		goto ret
 	}
-	return command
+	command = m.Text[1:]
+	if idx := strings.IndexByte(command, ' '); idx != -1 {
+		command = command[:idx]
+	}
+ret:
+	return command, true
 }
