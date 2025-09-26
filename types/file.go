@@ -14,3 +14,11 @@ type Document struct {
 	MimeType     string `json:"mime_type,omitempty"`
 	FileSize     int    `json:"file_size,omitempty"`
 }
+
+type PhotoSize struct {
+	FileId       string `json:"file_id"`
+	FileUniqueId string `json:"file_unique_id"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
+	FileSize     int    `json:"file_size,omitempty"`
+}

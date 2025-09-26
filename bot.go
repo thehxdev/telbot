@@ -1,7 +1,5 @@
 package telbot
 
-// TODO: find a better way to use context package with this library.
-
 import (
 	"bytes"
 	"context"
@@ -17,23 +15,16 @@ import (
 	"github.com/thehxdev/telbot/types"
 )
 
-const GetUpdatesSleepTime = time.Second * 1
-
 type Bot struct {
-	Token       string
-	BaseUrl     string
-	BaseFileUrl string
-	Self        *types.User
-	Client      *http.Client
-
-	// Shutdown signal channel
-	sdChan      chan struct{}
+	token       string
+	baseUrl     string
+	baseFileUrl string
+	self        *types.User
+	client      *http.Client
 	updatesChan chan Update
 }
 
 type UpdateHandlerFunc func(update Update) error
-
-// type StringMap map[string]string
 
 type RequestBody interface {
 	ToReader() (io.Reader, error)
@@ -43,8 +34,7 @@ type RequestBody interface {
 // This type wraps an `io.Reader` and implements `RequestBody` interface for it.
 type WrappedReader struct {
 	io.Reader
-	// Content Type
-	CType string
+	contentType string
 }
 
 func (wr *WrappedReader) ToReader() (io.Reader, error) {
@@ -52,12 +42,11 @@ func (wr *WrappedReader) ToReader() (io.Reader, error) {
 }
 
 func (wr *WrappedReader) ContentType() string {
-	return wr.CType
+	return wr.contentType
 }
 
 type RequestInfo struct {
 	Method      string
-	HasBody     bool
 	Body        RequestBody
 	ContentType string
 }
@@ -77,75 +66,69 @@ func New(token string, host ...string) (*Bot, error) {
 	}
 
 	b := &Bot{
-		Token:       token,
-		BaseUrl:     fmt.Sprintf("https://%s/bot%s", h, token),
-		BaseFileUrl: fmt.Sprintf("https://%s/file/bot%s", h, token),
-		Client:      &http.Client{},
-		sdChan:      make(chan struct{}),
+		token:       token,
+		baseUrl:     fmt.Sprintf("https://%s/bot%s", h, token),
+		baseFileUrl: fmt.Sprintf("https://%s/file/bot%s", h, token),
+		client:      &http.Client{},
 	}
 
 	botUser, err := b.GetMe()
 	if err != nil {
 		return nil, err
 	}
-	b.Self = botUser
+	b.self = botUser
 
 	return b, nil
 }
 
-func (b *Bot) Shutdown() {
-	close(b.sdChan)
-	close(b.updatesChan)
-}
-
-func CreateMethodUrl(baseUrl string, method string) string {
+func createMethodUrl(baseUrl string, method string) string {
 	return fmt.Sprintf("%s/%s", baseUrl, method)
 }
 
-func (b *Bot) SendRequest(ctx context.Context, baseUrl string, info RequestInfo) (*APIResponse, error) {
-	var err error
-	var reqBody io.Reader = nil
-	if info.HasBody {
+func (b *Bot) SendRequest(ctx context.Context, baseUrl string, info RequestInfo) (resp APIResponse, err error) {
+	var (
+		reqBody  io.Reader
+		httpResp *http.Response
+	)
+
+	if info.Body != nil {
 		reqBody, err = info.Body.ToReader()
 		if err != nil {
-			return nil, err
+			return
 		}
 	}
 
-	reqUrl := CreateMethodUrl(baseUrl, info.Method)
+	reqUrl := createMethodUrl(baseUrl, info.Method)
 	req, err := http.NewRequestWithContext(ctx, "POST", reqUrl, reqBody)
 	if err != nil {
-		return nil, err
+		return
 	}
 	if info.ContentType != "" {
 		req.Header.Set("Content-Type", info.ContentType)
 	}
 
-	resp, err := b.Client.Do(req)
+	httpResp, err = b.client.Do(req)
 	if err != nil {
-		return nil, err
+		return
 	}
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
-	apiResp := &APIResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(apiResp); err != nil {
-		return nil, err
-	}
-
-	if !apiResp.Ok {
-		return nil, errors.New(apiResp.Description)
+	if err = json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
+		return
 	}
 
-	return apiResp, nil
+	if !resp.Ok {
+		err = errors.New(resp.Description)
+	}
+	return
 }
 
 func (b *Bot) GetMe() (*types.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultOperationTimeout)
 	defer cancel()
 
-	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      MethodGetMe,
-		HasBody:     false,
 		Body:        nil,
 		ContentType: "",
 	})
@@ -162,15 +145,14 @@ func (b *Bot) GetMe() (*types.User, error) {
 	return u, err
 }
 
-func (b *Bot) GetUpdates(params UpdateParams) ([]Update, error) {
+func (b *Bot) GetUpdates(ctx context.Context, params UpdateParams) ([]Update, error) {
 	updates := []Update{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(params.Timeout))
+	reqCtx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(params.Timeout))
 	defer cancel()
 
-	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(reqCtx, b.baseUrl, RequestInfo{
 		Method:      MethodGetUpdates,
-		HasBody:     true,
 		Body:        &params,
 		ContentType: params.ContentType(),
 	})
@@ -185,7 +167,11 @@ func (b *Bot) GetUpdates(params UpdateParams) ([]Update, error) {
 	return updates, nil
 }
 
-func (b *Bot) UploadFile(ctx context.Context, params UploadParams, file FileInfo) (*types.Message, error) {
+func (b *Bot) UploadFile(ctx context.Context, params UploadParams, files []FileInfo) (*types.Message, error) {
+	if len(files) == 0 {
+		return nil, errors.New("no files provided to upload")
+	}
+
 	pipeReader, pipeWriter := io.Pipe()
 	multipartWriter := multipart.NewWriter(pipeWriter)
 
@@ -201,33 +187,33 @@ func (b *Bot) UploadFile(ctx context.Context, params UploadParams, file FileInfo
 			}
 		}
 
-		fileName, fileReader, err := file.UploadInfo()
-		if err != nil {
-			pipeWriter.CloseWithError(err)
-			return
-		}
-		part, err := multipartWriter.CreateFormFile(file.FileKind(), fileName)
-		if err != nil {
-			pipeWriter.CloseWithError(err)
-			return
-		}
-
-		if _, err := io.Copy(part, fileReader); err != nil {
-			pipeWriter.CloseWithError(err)
-			return
-		}
-
-		if closer, ok := fileReader.(io.ReadCloser); ok {
-			if err = closer.Close(); err != nil {
+		for _, file := range files {
+			fileName, fileReader, err := file.UploadInfo()
+			if err != nil {
 				pipeWriter.CloseWithError(err)
 				return
+			}
+			part, err := multipartWriter.CreateFormFile(file.FileKind(), fileName)
+			if err != nil {
+				pipeWriter.CloseWithError(err)
+				return
+			}
+
+			if _, err := io.Copy(part, fileReader); err != nil {
+				pipeWriter.CloseWithError(err)
+				return
+			}
+
+			if closer, ok := fileReader.(io.ReadCloser); ok {
+				if err = closer.Close(); err != nil {
+					pipeWriter.CloseWithError(err)
+				}
 			}
 		}
 	}()
 
-	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      "sendDocument",
-		HasBody:     true,
 		Body:        &WrappedReader{Reader: pipeReader},
 		ContentType: multipartWriter.FormDataContentType(),
 	})
@@ -243,8 +229,8 @@ func (b *Bot) UploadFile(ctx context.Context, params UploadParams, file FileInfo
 	return msg, nil
 }
 
-func (b *Bot) GetFile(fileId string) (*types.File, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+func (b *Bot) GetFile(ctx context.Context, fileId string) (*types.File, error) {
+	ctx, cancel := context.WithTimeout(ctx, DefaultOperationTimeout)
 	defer cancel()
 
 	jbytes, err := json.Marshal(map[string]string{"file_id": fileId})
@@ -252,9 +238,8 @@ func (b *Bot) GetFile(fileId string) (*types.File, error) {
 		return nil, err
 	}
 
-	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      MethodGetFile,
-		HasBody:     true,
 		Body:        &WrappedReader{Reader: bytes.NewReader(jbytes)},
 		ContentType: ContentTypeApplicationJson,
 	})
@@ -271,13 +256,12 @@ func (b *Bot) GetFile(fileId string) (*types.File, error) {
 	return file, nil
 }
 
-func (b *Bot) SendMessage(params TextMessageParams) (*types.Message, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+func (b *Bot) SendMessage(ctx context.Context, params TextMessageParams) (*types.Message, error) {
+	ctx, cancel := context.WithTimeout(ctx, DefaultOperationTimeout)
 	defer cancel()
 
-	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      MethodSendMessage,
-		HasBody:     true,
 		Body:        &params,
 		ContentType: params.ContentType(),
 	})
@@ -294,13 +278,12 @@ func (b *Bot) SendMessage(params TextMessageParams) (*types.Message, error) {
 	return msg, nil
 }
 
-func (b *Bot) EditMessageText(params EditMessageTextParams) (*types.Message, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+func (b *Bot) EditMessageText(ctx context.Context, params EditMessageTextParams) (*types.Message, error) {
+	ctx, cancel := context.WithTimeout(ctx, DefaultOperationTimeout)
 	defer cancel()
 
-	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      MethodEditMessageText,
-		HasBody:     true,
 		Body:        &params,
 		ContentType: params.ContentType(),
 	})
@@ -317,8 +300,8 @@ func (b *Bot) EditMessageText(params EditMessageTextParams) (*types.Message, err
 	return msg, nil
 }
 
-func (b *Bot) DeleteMessage(chatId, messageId int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+func (b *Bot) DeleteMessage(ctx context.Context, chatId, messageId int) error {
+	ctx, cancel := context.WithTimeout(ctx, DefaultOperationTimeout)
 	defer cancel()
 
 	jbytes, err := json.Marshal(map[string]int{"chat_id": chatId, "message_id": messageId})
@@ -326,26 +309,25 @@ func (b *Bot) DeleteMessage(chatId, messageId int) error {
 		return err
 	}
 
-	_, err = b.SendRequest(ctx, b.BaseUrl, RequestInfo{
+	_, err = b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      MethodDeleteMessage,
-		HasBody:     true,
 		Body:        &WrappedReader{Reader: bytes.NewReader(jbytes)},
 		ContentType: ContentTypeApplicationJson,
 	})
 	return err
 }
 
-func (b *Bot) StartPolling(params UpdateParams) (<-chan Update, error) {
+func (b *Bot) StartPolling(ctx context.Context, params UpdateParams) (<-chan Update, error) {
 	b.updatesChan = make(chan Update, params.Limit)
 
 	go func() {
 		for {
 			select {
-			case <-b.sdChan:
+			case <-ctx.Done():
 				return
 			default:
 			}
-			updates, err := b.GetUpdates(params)
+			updates, err := b.GetUpdates(ctx, params)
 			if err != nil {
 				log.Println(err)
 				time.Sleep(time.Second * 5)
@@ -354,7 +336,7 @@ func (b *Bot) StartPolling(params UpdateParams) (<-chan Update, error) {
 			for _, update := range updates {
 				if update.Id >= params.Offset {
 					params.Offset = update.Id + 1
-					update.bot = b
+					update.Bot = b
 					b.updatesChan <- update
 				}
 			}

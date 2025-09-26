@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/thehxdev/telbot"
@@ -15,7 +16,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	updatesChan, err := bot.StartPolling(telbot.UpdateParams{
+	ctx := context.Background()
+	updatesChan, err := bot.StartPolling(ctx, telbot.UpdateParams{
 		Offset:         0,
 		Timeout:        30,
 		Limit:          100,
@@ -50,17 +52,19 @@ func main() {
 }
 
 func StartHandler(update telbot.Update) error {
-	_, err := update.SendMessage(telbot.TextMessageParams{
+	params := telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
 		Text:   "Hello World!",
-	})
+	}
+	_, err := update.Bot.SendMessage(context.Background(), params)
 	return err
 }
 
 func EchoHandler(update telbot.Update) error {
-	_, err := update.SendMessage(telbot.TextMessageParams{
+	params := telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
 		Text:   update.Message.Text,
-	})
+	}
+	_, err := update.Bot.SendMessage(context.Background(), params)
 	return err
 }

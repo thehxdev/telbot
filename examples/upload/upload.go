@@ -28,29 +28,28 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ctx := context.Background()
-
 	// upload source code
 	file, err := os.Open(*path)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fi := &telbot.FileReader{
+	fileInfo := &telbot.FileReader{
 		Kind:     "document",
 		FileName: filepath.Base(*path),
 		Reader:   file,
 	}
-
-	log.Println("uploading file", *path)
-	msg, err := bot.UploadFile(ctx, telbot.UploadParams{
-		// send file to bot chat
+	params := telbot.UploadParams{
 		ChatId: *chatid,
 		Method: "sendDocument",
-	}, fi)
+	}
+
+	log.Println("uploading file", *path)
+	msg, err := bot.UploadFile(context.Background(), params, []telbot.FileInfo{fileInfo})
 	if err != nil {
 		log.Fatal(err)
 	}
+	file.Close()
 
 	fmt.Printf("\n%#v\n\n%#v\n", msg, msg.Document)
 }

@@ -67,6 +67,7 @@ func HandleUpdate(update telbot.Update) error {
 			return err
 		}
 	}
+
 	conv.current += 1
 	return nil
 }

@@ -1,41 +1,19 @@
 package telbot
 
 import (
-	"context"
 	"github.com/thehxdev/telbot/types"
 )
 
 const defaultInvalidId = -1
 
 type Update struct {
-	Id      int            `json:"update_id"`
-	Message *types.Message `json:"message,omitempty"`
+	Id                int            `json:"update_id"`
+	Message           *types.Message `json:"message,omitempty"`
+	EditedMessage     *types.Message `json:"edited_message,omitempty"`
+	ChannelPost       *types.Message `json:"channel_post,omitempty"`
+	EditedChannelPost *types.Message `json:"edited_cahannel_post,omitempty"`
 
-	bot *Bot `json:"-"`
-}
-
-func (u *Update) GetBot() *Bot {
-	return u.bot
-}
-
-func (u *Update) SendMessage(params TextMessageParams) (*types.Message, error) {
-	return u.bot.SendMessage(params)
-}
-
-func (u *Update) UploadFile(ctx context.Context, params UploadParams, file FileInfo) (*types.Message, error) {
-	return u.bot.UploadFile(ctx, params, file)
-}
-
-func (u *Update) EditMessage(params EditMessageTextParams) (*types.Message, error) {
-	return u.bot.EditMessageText(params)
-}
-
-func (u *Update) DeleteMessage(chatId, messageId int) error {
-	return u.bot.DeleteMessage(chatId, messageId)
-}
-
-func (u *Update) GetFile(fileId string) (*types.File, error) {
-	return u.bot.GetFile(fileId)
+	Bot *Bot `json:"-"`
 }
 
 func (u *Update) ChatId() int {

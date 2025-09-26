@@ -20,11 +20,11 @@ type FileReader struct {
 	Reader   io.Reader
 }
 
-func (fr FileReader) UploadInfo() (string, io.Reader, error) {
+func (fr *FileReader) UploadInfo() (string, io.Reader, error) {
 	return fr.FileName, fr.Reader, nil
 }
 
-func (fr FileReader) FileKind() string {
+func (fr *FileReader) FileKind() string {
 	return fr.Kind
 }
 
@@ -60,6 +60,7 @@ type TextMessageParams struct {
 	Entities    []types.MessageEntity `json:"entities,omitempty"`
 
 	// This field is not used anymore (I assume it's legacy. Use ReplyParams instead)
+	// Included for backward compatibility.
 	ReplyToMsgId int `json:"reply_to_message_id,omitempty"`
 }
 

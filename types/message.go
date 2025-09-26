@@ -38,7 +38,7 @@ type MessageEntity struct {
 
 type Message struct {
 	Id       int             `json:"message_id"`
-	Date     uint            `json:"date"`
+	Date     int64           `json:"date"`
 	Chat     *Chat           `json:"chat"`
 	From     *User           `json:"from,omitempty"`
 	Document *Document       `json:"document,omitempty"`
@@ -46,6 +46,10 @@ type Message struct {
 	Entities []MessageEntity `json:"entities,omitempty"`
 	ReplyTo  *Message        `json:"reply_to_message,omitempty"`
 	EditDate uint            `json:"edit_date,omitempty"`
+}
+
+type MessageId struct {
+	MessageId int `json:"message_id"`
 }
 
 func (e *MessageEntity) IsCommand() bool {
@@ -60,13 +64,12 @@ func (e *MessageEntity) ParseURL() (*url.URL, error) {
 }
 
 func (m *Message) Time() time.Time {
-	return time.Unix(int64(m.Date), 0)
+	return time.Unix(m.Date, 0)
 }
 
 func (m *Message) IsCommand() bool {
-	if m.Entities != nil && len(m.Entities) > 0 {
-		e := m.Entities[0]
-		return e.IsCommand()
+	if len(m.Entities) > 0 {
+		return m.Entities[0].IsCommand()
 	}
 	txt := m.Text
 	if idx := strings.IndexByte(txt, '/'); idx == 0 {
@@ -80,7 +83,7 @@ func (m *Message) Command() (string, bool) {
 		return "", false
 	}
 	var command string
-	if m.Entities != nil && len(m.Entities) > 0 {
+	if len(m.Entities) > 0 {
 		e := m.Entities[0]
 		command = m.Text[1:e.Length]
 		if idx := strings.IndexByte(command, '@'); idx != -1 {
