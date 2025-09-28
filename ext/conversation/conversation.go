@@ -1,9 +1,6 @@
 package conversation
 
 import (
-	"fmt"
-	"sync"
-
 	"github.com/thehxdev/telbot"
 )
 
@@ -11,6 +8,12 @@ type Conversation struct {
 	Next   ConversationHandler
 	ChatId int
 	UserId int
+}
+
+type ConversationStore interface {
+	Store(userId int, conv *Conversation) error
+	Get(userId int) (*Conversation, error)
+	Remove(userId int) error
 }
 
 type ConversationHandler func(*Conversation, telbot.Update) error
@@ -21,18 +24,14 @@ func (e *EndConversation) Error() string {
 	return "end conversation"
 }
 
-var convMap = &struct {
-	mu    *sync.RWMutex
-	table map[int]*Conversation
-}{
-	mu:    &sync.RWMutex{},
-	table: make(map[int]*Conversation),
+var convStore ConversationStore = NewDefaultConversationStore()
+
+func SetConversationStore(cs ConversationStore) {
+	convStore = cs
 }
 
 func HasConversation(chatId, userId int) bool {
-	convMap.mu.RLock()
-	defer convMap.mu.RUnlock()
-	if conv, ok := convMap.table[userId]; ok {
+	if conv, err := convStore.Get(userId); err == nil {
 		return conv.ChatId == chatId
 	}
 	return false
@@ -41,20 +40,15 @@ func HasConversation(chatId, userId int) bool {
 func CallNext(update telbot.Update) error {
 	userId := update.Message.From.Id
 
-	convMap.mu.RLock()
-	conv, ok := convMap.table[userId]
-	convMap.mu.RUnlock()
-
-	if !ok {
-		return fmt.Errorf("no conversation found for userId %d", userId)
+	conv, err := convStore.Get(userId)
+	if err != nil {
+		return err
 	}
 
-	err := conv.Next(conv, update)
+	err = conv.Next(conv, update)
 	switch err.(type) {
 	case *EndConversation:
-		convMap.mu.Lock()
-		delete(convMap.table, conv.UserId)
-		convMap.mu.Unlock()
+		convStore.Remove(userId)
 		err = nil
 	}
 
@@ -67,10 +61,6 @@ func Start(startHandler ConversationHandler, update telbot.Update) {
 		UserId: userId,
 		ChatId: update.Message.Chat.Id,
 	}
-
-	convMap.mu.Lock()
-	convMap.table[userId] = c
-	convMap.mu.Unlock()
-
+	_ = convStore.Store(userId, c)
 	startHandler(c, update)
 }
