@@ -33,6 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer file.Close()
 
 	fileInfo := &telbot.FileReader{
 		Kind:     "document",
@@ -45,11 +46,10 @@ func main() {
 	}
 
 	log.Println("uploading file", *path)
-	msg, err := bot.UploadFile(context.Background(), params, []telbot.FileInfo{fileInfo})
+	msg, err := bot.UploadFile(context.Background(), params, []telbot.IFileInfo{fileInfo})
 	if err != nil {
 		log.Fatal(err)
 	}
-	file.Close()
 
 	fmt.Printf("\n%#v\n\n%#v\n", msg, msg.Document)
 }

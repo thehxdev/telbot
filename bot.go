@@ -20,34 +20,15 @@ type Bot struct {
 	baseUrl     string
 	baseFileUrl string
 	self        *types.User
-	client      *http.Client
+	client      http.Client
 	updatesChan chan Update
 }
 
-type UpdateHandlerFunc func(update Update) error
-
-type RequestBody interface {
-	ToReader() (io.Reader, error)
-	ContentType() string
-}
-
-// This type wraps an `io.Reader` and implements `RequestBody` interface for it.
-type WrappedReader struct {
-	io.Reader
-	contentType string
-}
-
-func (wr *WrappedReader) ToReader() (io.Reader, error) {
-	return wr.Reader, nil
-}
-
-func (wr *WrappedReader) ContentType() string {
-	return wr.contentType
-}
+type UpdateHandler func(update Update) error
 
 type RequestInfo struct {
+	Body        io.Reader
 	Method      string
-	Body        RequestBody
 	ContentType string
 }
 
@@ -56,6 +37,10 @@ type APIResponse struct {
 	Result      json.RawMessage `json:"result"`
 	ErrorCode   int             `json:"error_code,omitempty"`
 	Description string          `json:"description,omitempty"`
+}
+
+func createMethodUrl(baseUrl string, method string) string {
+	return fmt.Sprintf("%s/%s", baseUrl, method)
 }
 
 // Create a new Bot
@@ -69,20 +54,16 @@ func New(token string, host ...string) (*Bot, error) {
 		token:       token,
 		baseUrl:     fmt.Sprintf("https://%s/bot%s", h, token),
 		baseFileUrl: fmt.Sprintf("https://%s/file/bot%s", h, token),
-		client:      &http.Client{},
+		client:      http.Client{},
 	}
 
-	botUser, err := b.GetMe()
+	botUser, err := b.GetMe(context.Background())
 	if err != nil {
 		return nil, err
 	}
 	b.self = botUser
 
 	return b, nil
-}
-
-func createMethodUrl(baseUrl string, method string) string {
-	return fmt.Sprintf("%s/%s", baseUrl, method)
 }
 
 func (b *Bot) SendRequest(ctx context.Context, baseUrl string, info RequestInfo) (resp APIResponse, err error) {
@@ -92,10 +73,7 @@ func (b *Bot) SendRequest(ctx context.Context, baseUrl string, info RequestInfo)
 	)
 
 	if info.Body != nil {
-		reqBody, err = info.Body.ToReader()
-		if err != nil {
-			return
-		}
+		reqBody = info.Body
 	}
 
 	reqUrl := createMethodUrl(baseUrl, info.Method)
@@ -123,38 +101,17 @@ func (b *Bot) SendRequest(ctx context.Context, baseUrl string, info RequestInfo)
 	return
 }
 
-func (b *Bot) GetMe() (*types.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultOperationTimeout)
-	defer cancel()
-
-	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
-		Method:      MethodGetMe,
-		Body:        nil,
-		ContentType: "",
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if !apiResp.Ok {
-		return nil, errors.New(apiResp.Description)
-	}
-
-	u := &types.User{}
-	err = json.Unmarshal(apiResp.Result, u)
-	return u, err
-}
-
 func (b *Bot) GetUpdates(ctx context.Context, params UpdateParams) ([]Update, error) {
 	updates := []Update{}
 
 	reqCtx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(params.Timeout))
 	defer cancel()
 
+	body, _ := ParamsToReader(params)
 	apiResp, err := b.SendRequest(reqCtx, b.baseUrl, RequestInfo{
 		Method:      MethodGetUpdates,
-		Body:        &params,
-		ContentType: params.ContentType(),
+		Body:        body,
+		ContentType: ContentTypeApplicationJson,
 	})
 	if err != nil {
 		return nil, err
@@ -167,7 +124,37 @@ func (b *Bot) GetUpdates(ctx context.Context, params UpdateParams) ([]Update, er
 	return updates, nil
 }
 
-func (b *Bot) UploadFile(ctx context.Context, params UploadParams, files []FileInfo) (*types.Message, error) {
+func (b *Bot) StartPolling(ctx context.Context, params UpdateParams) (<-chan Update, error) {
+	b.updatesChan = make(chan Update, params.Limit)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			updates, err := b.GetUpdates(ctx, params)
+			if err != nil {
+				log.Println(err)
+				time.Sleep(time.Second * 5)
+				continue
+			}
+			for _, update := range updates {
+				if update.Id >= params.Offset {
+					params.Offset = update.Id + 1
+					update.Bot = b
+					b.updatesChan <- update
+				}
+			}
+			time.Sleep(getUpdatesSleepTime)
+		}
+	}()
+
+	return b.updatesChan, nil
+}
+
+func (b *Bot) UploadFile(ctx context.Context, params UploadParams, files []IFileInfo) (*types.Message, error) {
 	if len(files) == 0 {
 		return nil, errors.New("no files provided to upload")
 	}
@@ -214,7 +201,7 @@ func (b *Bot) UploadFile(ctx context.Context, params UploadParams, files []FileI
 
 	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      "sendDocument",
-		Body:        &WrappedReader{Reader: pipeReader},
+		Body:        pipeReader,
 		ContentType: multipartWriter.FormDataContentType(),
 	})
 	if err != nil {
@@ -229,18 +216,55 @@ func (b *Bot) UploadFile(ctx context.Context, params UploadParams, files []FileI
 	return msg, nil
 }
 
-func (b *Bot) GetFile(ctx context.Context, fileId string) (*types.File, error) {
-	ctx, cancel := context.WithTimeout(ctx, DefaultOperationTimeout)
+func (b *Bot) GetMe(ctx context.Context) (*types.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
 	defer cancel()
 
-	jbytes, err := json.Marshal(map[string]string{"file_id": fileId})
+	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
+		Method:      MethodGetMe,
+		Body:        nil,
+		ContentType: "",
+	})
 	if err != nil {
 		return nil, err
 	}
 
+	if !apiResp.Ok {
+		return nil, errors.New(apiResp.Description)
+	}
+
+	u := &types.User{}
+	err = json.Unmarshal(apiResp.Result, u)
+	return u, err
+}
+
+func (b *Bot) LogOut(ctx context.Context) (bool, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
+	defer cancel()
+	apiResp, err := b.SendRequest(reqCtx, b.baseUrl, RequestInfo{
+		Method: "logOut",
+	})
+	return apiResp.Ok, err
+}
+
+// This method is the implementation of the "close" method of telegram bot api
+func (b *Bot) Close(ctx context.Context) (bool, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
+	defer cancel()
+	apiResp, err := b.SendRequest(reqCtx, b.baseUrl, RequestInfo{
+		Method: "close",
+	})
+	return apiResp.Ok, err
+}
+
+func (b *Bot) GetFile(ctx context.Context, fileId string) (*types.File, error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
+	defer cancel()
+
+	body, _ := ParamsToReader(map[string]string{"file_id": fileId})
 	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      MethodGetFile,
-		Body:        &WrappedReader{Reader: bytes.NewReader(jbytes)},
+		Body:        body,
 		ContentType: ContentTypeApplicationJson,
 	})
 	if err != nil {
@@ -257,13 +281,14 @@ func (b *Bot) GetFile(ctx context.Context, fileId string) (*types.File, error) {
 }
 
 func (b *Bot) SendMessage(ctx context.Context, params TextMessageParams) (*types.Message, error) {
-	ctx, cancel := context.WithTimeout(ctx, DefaultOperationTimeout)
+	ctx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
 	defer cancel()
 
+	body, _ := ParamsToReader(params)
 	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      MethodSendMessage,
-		Body:        &params,
-		ContentType: params.ContentType(),
+		Body:        body,
+		ContentType: ContentTypeApplicationJson,
 	})
 	if err != nil {
 		return nil, err
@@ -279,13 +304,14 @@ func (b *Bot) SendMessage(ctx context.Context, params TextMessageParams) (*types
 }
 
 func (b *Bot) EditMessageText(ctx context.Context, params EditMessageTextParams) (*types.Message, error) {
-	ctx, cancel := context.WithTimeout(ctx, DefaultOperationTimeout)
+	ctx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
 	defer cancel()
 
+	body, _ := ParamsToReader(params)
 	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      MethodEditMessageText,
-		Body:        &params,
-		ContentType: params.ContentType(),
+		Body:        body,
+		ContentType: ContentTypeApplicationJson,
 	})
 	if err != nil {
 		return nil, err
@@ -301,48 +327,14 @@ func (b *Bot) EditMessageText(ctx context.Context, params EditMessageTextParams)
 }
 
 func (b *Bot) DeleteMessage(ctx context.Context, chatId, messageId int) error {
-	ctx, cancel := context.WithTimeout(ctx, DefaultOperationTimeout)
+	ctx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
 	defer cancel()
 
-	jbytes, err := json.Marshal(map[string]int{"chat_id": chatId, "message_id": messageId})
-	if err != nil {
-		return err
-	}
-
-	_, err = b.SendRequest(ctx, b.baseUrl, RequestInfo{
+	body, _ := ParamsToReader(map[string]int{"chat_id": chatId, "message_id": messageId})
+	_, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
 		Method:      MethodDeleteMessage,
-		Body:        &WrappedReader{Reader: bytes.NewReader(jbytes)},
+		Body:        body,
 		ContentType: ContentTypeApplicationJson,
 	})
 	return err
-}
-
-func (b *Bot) StartPolling(ctx context.Context, params UpdateParams) (<-chan Update, error) {
-	b.updatesChan = make(chan Update, params.Limit)
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			updates, err := b.GetUpdates(ctx, params)
-			if err != nil {
-				log.Println(err)
-				time.Sleep(time.Second * 5)
-				continue
-			}
-			for _, update := range updates {
-				if update.Id >= params.Offset {
-					params.Offset = update.Id + 1
-					update.Bot = b
-					b.updatesChan <- update
-				}
-			}
-			time.Sleep(GetUpdatesSleepTime)
-		}
-	}()
-
-	return b.updatesChan, nil
 }

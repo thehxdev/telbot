@@ -3,8 +3,9 @@ package telbot
 import "time"
 
 const (
-	DefaultOperationTimeout = time.Second * 10
-	GetUpdatesSleepTime     = time.Second * 1
+	defaultInvalidId        = -1
+	defaultOperationTimeout = time.Second * 5
+	getUpdatesSleepTime     = time.Second * 1
 )
 
 const (
@@ -27,4 +28,23 @@ const (
 	MethodGetFile         = "getFile"
 	MethodEditMessageText = "editMessageText"
 	MethodDeleteMessage   = "deleteMessage"
+)
+
+const (
+	MessageEntityTypeMention       = "mention"
+	MessageEntityTypeHashtag       = "hashtag"
+	MessageEntityTypeCashtag       = "cachtag"
+	MessageEntityTypeBotCommand    = "bot_command"
+	MessageEntityTypeUrl           = "url"
+	MessageEntityTypeEmail         = "email"
+	MessageEntityTypePhoneNumber   = "phone_number"
+	MessageEntityTypeBold          = "bold"
+	MessageEntityTypeItalic        = "italic"
+	MessageEntityTypeUnderline     = "underline"
+	MessageEntityTypeStrikeThrough = "strikethrough"
+	MessageEntityTypeSpoiler       = "spoiler"
+	MessageEntityTypeCode          = "code"
+	MessageEntityTypePre           = "pre"
+	MessageEntityTypeTextLink      = "text_link"
+	MessageEntityTypeTextMention   = "text_mention"
 )
