@@ -12,7 +12,7 @@ type InMemoryConversationStore struct {
 
 func NewDefaultConversationStore() *InMemoryConversationStore {
 	return &InMemoryConversationStore{
-		mu: &sync.RWMutex{},
+		mu:    &sync.RWMutex{},
 		table: map[int]*Conversation{},
 	}
 }

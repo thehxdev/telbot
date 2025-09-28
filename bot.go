@@ -66,20 +66,16 @@ func New(token string, host ...string) (*Bot, error) {
 	return b, nil
 }
 
-func (b *Bot) SendRequest(ctx context.Context, baseUrl string, info RequestInfo) (resp APIResponse, err error) {
+func (b *Bot) SendRequest(ctx context.Context, baseUrl string, info RequestInfo) (APIResponse, error) {
 	var (
-		reqBody  io.Reader
 		httpResp *http.Response
+		resp     APIResponse
 	)
 
-	if info.Body != nil {
-		reqBody = info.Body
-	}
-
 	reqUrl := createMethodUrl(baseUrl, info.Method)
-	req, err := http.NewRequestWithContext(ctx, "POST", reqUrl, reqBody)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqUrl, info.Body)
 	if err != nil {
-		return
+		goto ret
 	}
 	if info.ContentType != "" {
 		req.Header.Set("Content-Type", info.ContentType)
@@ -87,18 +83,19 @@ func (b *Bot) SendRequest(ctx context.Context, baseUrl string, info RequestInfo)
 
 	httpResp, err = b.client.Do(req)
 	if err != nil {
-		return
+		goto ret
 	}
 	defer httpResp.Body.Close()
 
 	if err = json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
-		return
+		goto ret
 	}
-
 	if !resp.Ok {
 		err = errors.New(resp.Description)
 	}
-	return
+
+ret:
+	return resp, err
 }
 
 func (b *Bot) GetUpdates(ctx context.Context, params UpdateParams) ([]Update, error) {
