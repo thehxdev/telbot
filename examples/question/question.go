@@ -17,10 +17,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	startConv, _ := conv.New([]telbot.UpdateHandlerFunc{startHandler, nameHandler})
-
-	ctx := context.Background()
-	updatesChan, err := bot.StartPolling(ctx, telbot.UpdateParams{
+	updatesChan, _ := bot.StartPolling(context.Background(), telbot.UpdateParams{
 		Offset:         0,
 		Limit:          100,
 		Timeout:        30,
@@ -36,17 +33,18 @@ func main() {
 			var err error
 			switch update.Message.Text {
 			case "/start":
-				// If a message with text `/start` comes, start a conversation.
-				startConv.Start(update)
+				// Start a new conversation once a "/start" command received
+				conv.Start(startHandler, update)
 			default:
-				// Otherwise, there is no more routes. So check all other updates for conversation.
-				// If they belong to a conversation, handle that.
+				// Otherwise, there is no more routes. So check the userId and
+				// chatId for a conversatoin. If they belong to a conversation,
+				// call next handler registered with that.
 				//
-				// NOTE: Ordering of the handlers matter! `telbot` is a low-level library that
-				// does not provide any routing. So the user must handle routing of the updates
-				// and conversations.
+				// NOTE: Ordering of the handlers matter! `telbot` is a low
+				// level library that does not provide any routing. So routing
+				// the updates and conversatoins must be handled by the user.
 				if conv.HasConversation(update.ChatId(), update.UserId()) {
-					err = conv.HandleUpdate(update)
+					err = conv.CallNext(update)
 				}
 			}
 			if err != nil {
@@ -56,23 +54,21 @@ func main() {
 	}
 }
 
-func startHandler(update telbot.Update) error {
+func startHandler(c *conv.Conversation, update telbot.Update) error {
 	params := telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
 		Text:   "Hey! This is a question bot. What is your name?",
 	}
 	_, err := update.Bot.SendMessage(context.Background(), params)
+	c.Next = nameHandler
 	return err
 }
 
-func nameHandler(update telbot.Update) error {
+func nameHandler(c *conv.Conversation, update telbot.Update) error {
 	params := telbot.TextMessageParams{
 		ChatId: update.Message.Chat.Id,
 		Text:   fmt.Sprintf("Nice to meet you %s!", update.Message.Text),
 	}
-	_, err := update.Bot.SendMessage(context.Background(), params)
-	if err != nil {
-		return err
-	}
-	return conv.EndConversation
+	update.Bot.SendMessage(context.Background(), params)
+	return &conv.EndConversation{}
 }
