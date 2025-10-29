@@ -6,14 +6,14 @@ import (
 )
 
 type InMemoryConversationStore struct {
-	mu    *sync.RWMutex
+	mu    sync.RWMutex
 	table map[int]*Conversation
 }
 
 func NewDefaultConversationStore() *InMemoryConversationStore {
 	return &InMemoryConversationStore{
-		mu:    &sync.RWMutex{},
-		table: map[int]*Conversation{},
+		mu:    sync.RWMutex{},
+		table: make(map[int]*Conversation),
 	}
 }
 
