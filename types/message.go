@@ -27,8 +27,16 @@ type Message struct {
 	EditDate uint            `json:"edit_date,omitempty"`
 }
 
-type MessageId struct {
-	MessageId int `json:"message_id"`
+type MessageId int
+
+type MaybeInaccessibleMessage struct {
+	Type          string
+	Offset        int
+	Length        int
+	Url           string `json:"url,omitempty"`
+	User          *User  `json:"user,omitempty"`
+	Language      string `json:"language,omitempty"`
+	CustomEmojiId string `json:"custom_emoji_id,omitempty"`
 }
 
 func (e *MessageEntity) IsCommand() bool {

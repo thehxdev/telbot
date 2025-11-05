@@ -46,3 +46,9 @@ type BusinessConnection struct {
 	Rights     *BusinessBotRights `json:"rights,omitempty"`
 	IsEnabled  bool               `json:"is_enabled,omitempty"`
 }
+
+type BusinessMessageDeleted struct {
+	BusinessConnectionId string `json:"business_connection_id"`
+	Chat                 Chat   `json:"chat"`
+	MessageIds           []int  `json:"message_ids"`
+}

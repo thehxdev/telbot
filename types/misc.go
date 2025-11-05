@@ -34,3 +34,8 @@ type SuggestedPostPrice struct {
 	Currency string
 	Amount   int
 }
+
+type PaidMediaPurchased struct {
+	From             User
+	PaidMediaPayload string `json:"paid_media_payload"`
+}
