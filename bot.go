@@ -16,10 +16,10 @@ import (
 )
 
 type Bot struct {
-	token       string
-	baseUrl     string
-	baseFileUrl string
-	self        *types.User
+	Token       string
+	BaseUrl     string
+	BaseFileUrl string
+	Self        *types.User
 	client      http.Client
 	updatesChan chan Update
 }
@@ -51,9 +51,9 @@ func New(token string, host ...string) (*Bot, error) {
 	}
 
 	b := &Bot{
-		token:       token,
-		baseUrl:     fmt.Sprintf("https://%s/bot%s", h, token),
-		baseFileUrl: fmt.Sprintf("https://%s/file/bot%s", h, token),
+		Token:       token,
+		BaseUrl:     fmt.Sprintf("https://%s/bot%s", h, token),
+		BaseFileUrl: fmt.Sprintf("https://%s/file/bot%s", h, token),
 		client:      http.Client{},
 	}
 
@@ -61,7 +61,7 @@ func New(token string, host ...string) (*Bot, error) {
 	if err != nil {
 		return nil, err
 	}
-	b.self = botUser
+	b.Self = botUser
 
 	return b, nil
 }
@@ -105,7 +105,7 @@ func (b *Bot) GetUpdates(ctx context.Context, params UpdateParams) ([]Update, er
 	defer cancel()
 
 	body, _ := ParamsToReader(params)
-	apiResp, err := b.SendRequest(reqCtx, b.baseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(reqCtx, b.BaseUrl, RequestInfo{
 		Method:      MethodGetUpdates,
 		Body:        body,
 		ContentType: ContentTypeApplicationJson,
@@ -196,7 +196,7 @@ func (b *Bot) UploadFile(ctx context.Context, params UploadParams, files []IFile
 		}
 	}()
 
-	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      "sendDocument",
 		Body:        pipeReader,
 		ContentType: multipartWriter.FormDataContentType(),
@@ -217,7 +217,7 @@ func (b *Bot) GetMe(ctx context.Context) (*types.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
 	defer cancel()
 
-	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      MethodGetMe,
 		Body:        nil,
 		ContentType: "",
@@ -238,7 +238,7 @@ func (b *Bot) GetMe(ctx context.Context) (*types.User, error) {
 func (b *Bot) LogOut(ctx context.Context) (bool, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
 	defer cancel()
-	apiResp, err := b.SendRequest(reqCtx, b.baseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(reqCtx, b.BaseUrl, RequestInfo{
 		Method: "logOut",
 	})
 	return apiResp.Ok, err
@@ -248,7 +248,7 @@ func (b *Bot) LogOut(ctx context.Context) (bool, error) {
 func (b *Bot) Close(ctx context.Context) (bool, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, defaultOperationTimeout)
 	defer cancel()
-	apiResp, err := b.SendRequest(reqCtx, b.baseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(reqCtx, b.BaseUrl, RequestInfo{
 		Method: "close",
 	})
 	return apiResp.Ok, err
@@ -259,7 +259,7 @@ func (b *Bot) GetFile(ctx context.Context, fileId string) (*types.File, error) {
 	defer cancel()
 
 	body, _ := ParamsToReader(map[string]string{"file_id": fileId})
-	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      MethodGetFile,
 		Body:        body,
 		ContentType: ContentTypeApplicationJson,
@@ -282,7 +282,7 @@ func (b *Bot) SendMessage(ctx context.Context, params TextMessageParams) (*types
 	defer cancel()
 
 	body, _ := ParamsToReader(params)
-	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      MethodSendMessage,
 		Body:        body,
 		ContentType: ContentTypeApplicationJson,
@@ -305,7 +305,7 @@ func (b *Bot) EditMessageText(ctx context.Context, params EditMessageTextParams)
 	defer cancel()
 
 	body, _ := ParamsToReader(params)
-	apiResp, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
+	apiResp, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      MethodEditMessageText,
 		Body:        body,
 		ContentType: ContentTypeApplicationJson,
@@ -328,7 +328,7 @@ func (b *Bot) DeleteMessage(ctx context.Context, chatId, messageId int) error {
 	defer cancel()
 
 	body, _ := ParamsToReader(map[string]int{"chat_id": chatId, "message_id": messageId})
-	_, err := b.SendRequest(ctx, b.baseUrl, RequestInfo{
+	_, err := b.SendRequest(ctx, b.BaseUrl, RequestInfo{
 		Method:      MethodDeleteMessage,
 		Body:        body,
 		ContentType: ContentTypeApplicationJson,
